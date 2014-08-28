@@ -62,8 +62,8 @@ class My_Links {
         add_action( 'init', array( $this, 'add_taxonomies' ) );
         add_filter( 'rewrite_rules_array', array( $this, 'my_links_add_rewrite_rules' ) );
         add_filter( 'post_type_link', array( $this, 'my_links_filter_post_type_link' ), 10, 2 );
-        //add_filter( 'map_meta_cap', array( $this, 'my_map_meta_cap' ), 10, 4 );
         add_shortcode( 'press_links', array( $this, 'press_links_shortcode' ) );
+        add_filter( 'pre_get_posts', array( $this, 'my_links_search_filter' ) );
 
 		if ( is_admin() ) {
 
@@ -115,18 +115,7 @@ class My_Links {
             'taxonomies'          => array( 'my_links_category' ),
             'has_archive'         => false,
             'rewrite'	          => array( 'slug' => 'press-room/%my_links_category%', 'with_front' => true ),
-            //'map_meta_cap'        => true,
             'capability_type'     => 'post',
-            /*'capabilities'        => array(
-                'publish_posts'         => 'publish_links',
-                'edit_posts'            => 'edit_links',
-                'edit_others_posts'     => 'edit_others_links',
-                'delete_posts'          => 'delete_links',
-                'delete_others_posts'   => 'delete_links',
-                'edit_post'             => 'edit_link',
-                'delete_post'           => 'delete_link',
-                'read_post'             => 'read_link'
-            )*/
 		);
 		register_post_type( self::slug, $args );
 	}
@@ -153,49 +142,6 @@ class My_Links {
 		);
 		register_taxonomy( self::slug.'_category', self::slug, $args );
 	}
-    
-    /* User Capabilities */
-    function my_map_meta_cap( $caps, $cap, $user_id, $args ) {
-
-        /* If editing, deleting, or reading a link, get the post and post type object. */
-        if ( 'edit_link' == $cap || 'delete_link' == $cap || 'read_link' == $cap ) {
-            $post = get_post( $args[0] );
-            $post_type = get_post_type_object( $post->post_type );
-
-            /* Set an empty array for the caps. */
-            $caps = array();
-        }
-
-        /* If editing a link, assign the required capability. */
-        if ( 'edit_link' == $cap ) {
-            if ( $user_id == $post->post_author )
-                $caps[] = $post_type->cap->edit_posts;
-            else
-                $caps[] = $post_type->cap->edit_others_posts;
-        }
-
-        /* If deleting a link, assign the required capability. */
-        elseif ( 'delete_link' == $cap ) {
-            if ( $user_id == $post->post_author )
-                $caps[] = $post_type->cap->delete_posts;
-            else
-                $caps[] = $post_type->cap->delete_others_posts;
-        }
-
-        /* If reading a private link, assign the required capability. */
-        elseif ( 'read_link' == $cap ) {
-
-            if ( 'private' != $post->post_status )
-                $caps[] = 'read';
-            elseif ( $user_id == $post->post_author )
-                $caps[] = 'read';
-            else
-                $caps[] = $post_type->cap->read_private_posts;
-        }
-
-        /* Return the capabilities required by the user. */
-        return $caps;
-    }
     
     /* Permastructure */
     public function my_links_add_rewrite_rules( $rules ) {
@@ -255,20 +201,20 @@ class My_Links {
 
 	/* Add contextual help tab in the admin */
 	public function update_contextual_help( $contextual_help, $screen_id, $screen ) {
-		//Single Link Edit Screen
-		if ( 'my_links' == $screen->id ) {
-
-			$contextual_help = '<h2>Links</h2>
-			<p>Links show the details of email marketing campaigns on the website. You can see a list of them on this page in reverse chronological order - the latest one we added is first.</p>
+        
+		// Link Edit Screen
+		if ( 'edit-my_links' == $screen->id ) {
+			$contextual_help = '<h3>Links</h3>
+			<p>Links are similar to a site\'s blogroll. You can see a list of them on this page in reverse chronological order.</p>
 			<p>You can view/edit the details of each link by clicking on its name, or you can perform bulk actions using the dropdown menu and selecting multiple items.</p>';
 
-		//Link Edit Screen
-		} elseif ( 'edit-my_links' == $screen->id ) {
-
-			$contextual_help = '<h2>Editing Link</h2>
-			<p>This page allows you to view/modify product details. Please make sure to fill out the available boxes with the appropriate details (product image, price, brand) and <strong>not</strong> add these details to the product description.</p>';
+		// Single Link Edit Screen
+		} elseif ( 'my_links' == $screen->id ) {
+			$contextual_help = '<h3>Editing Link</h3>
+			<p>This page allows you to view/modify link details. Please make sure to fill out the name, website address fields, and define a date for which the original article being linked to was published; the rest are optional. If a category is not defined it will default to "Uncategorized".</p>';
 
 		}
+        
 		return $contextual_help;
 	}
     
@@ -277,19 +223,10 @@ class My_Links {
         remove_meta_box( 'slugdiv', 'my_links', 'normal' );
         remove_meta_box( 'dynwid', 'my_links', 'side' );
         remove_meta_box( 'wpseo_meta', 'my_links', 'normal' );
-        remove_meta_box( 'submitdiv', 'my_links', 'side' );
     }
     
     /* Add a custom meta box for inputs in the new content type*/
 	public function add_custom_meta_box( $post_type ) {
-        add_meta_box(
-	        'my_links_submit',
-	        __( 'Post', self::slug ),
-	        array( $this, 'my_links_submit_meta_box_content' ),
-	        self::slug,
-	        'side',
-	        'default'
-	    );
 	    add_meta_box(
 	        'my_links_url',
 	        __( 'Web Address', self::slug ),
@@ -314,67 +251,6 @@ class My_Links {
 	        'normal',
 	        'default'
 	    );
-	}
-
-	/* Add the actual fields to the custom meta box */
-    public function my_links_submit_meta_box_content( $post ) {
-        //global $post;
-        
-		// Add an nonce field so we can check for it later.
-		wp_nonce_field( plugin_basename( __FILE__ ), 'my_links_submit_meta_box_content_nonce' );
-
-        $url = get_post_meta( $post->ID, '_link-url', true );
-
-        ?>
-        <div class="submitbox" id="submitlink">
-            <div id="minor-publishing" style="margin-bottom:15px;">
-                <?php // Hidden submit button early on so that the browser chooses the right button when form is submitted with Return key ?>
-                <div style="display:none;">
-                    <?php submit_button( __( 'Save' ), 'button', 'save', false ); ?>
-                </div>
-
-                <div id="minor-publishing-actions">
-                    <div id="preview-action">
-                    <?php if ( !empty($url) ) { ?>
-                        <a class="preview button" href="<?php echo $url; ?>" target="_blank"><?php _e('Visit Link'); ?></a>
-                    <?php } ?>
-                    </div>
-                    <div class="clear"></div>
-                </div>
-            </div>
-
-            <div id="major-publishing-actions">
-                <?php
-                /** This action is documented in wp-admin/includes/meta-boxes.php */
-                do_action( 'post_submitbox_start' );
-                ?>
-                <div id="delete-action">
-                    <?php
-                if ( !empty($_GET['action']) && 'edit' == $_GET['action'] && current_user_can('edit_posts') ) { ?>
-                    <a class="submitdelete deletion" href="<?php echo wp_nonce_url("post.php?post=$post->ID&amp;action=delete", 'delete-post_' .  $post->ID); ?>" onclick="if ( confirm('<?php echo esc_js(sprintf(__("You are about to delete this link '%s'\n 'Cancel' to stop, 'OK' to delete."), $post->post_name )); ?>') ) {return true;}return false;"><?php _e('Delete'); ?></a>
-                <?php } ?>
-                </div>
-
-                <div id="publishing-action">
-                    <?php if ( !empty($url) ) { ?>
-                      <input name="save" type="submit" class="button-large button-primary" id="publish" accesskey="p" value="<?php esc_attr_e('Update Link') ?>" />
-                    <?php } else { ?>
-                        <input name="save" type="submit" class="button-large button-primary" id="publish" accesskey="p" value="<?php esc_attr_e('Add Link') ?>" />
-                    <?php } ?>
-                </div>
-                <div class="clear"></div>
-            </div>
-            <?php
-            /**
-             * Fires at the end of the Publish box in the Link editing screen.
-             *
-             * @since 2.5.0
-             */
-            do_action( 'submitlink_box' );
-            ?>
-            <div class="clear"></div>
-        </div>
-        <?php
 	}
     
 	public function my_links_url_meta_box_content( $post ) {
@@ -417,11 +293,12 @@ class My_Links {
         }
 
 		$html = '<p>';
-        $html .= '<p><label for="link_target_blank" class="selectit"><input id="link_target_blank" type="radio" name="link_target" value="_blank" '.( !empty($value == '_blank') ? 'checked="checked"' : '' ).' /><code>_blank</code> &mdash; new window or tab</label></p><p><label for="link_target_top" class="selectit"><input id="link_target_top" type="radio" name="link_target" value="_top" '.( !empty($value == '_top') ? 'checked="checked"' : '' ).' />
-<code>_top</code> &mdash; current window or tab, with no frames</label></p><p><label for="link_target_none" class="selectit"><input id="link_target_none" type="radio" name="link_target" value="_none" '.( !empty($value == '_none') ? 'checked="checked"' : '' ).' /><code>_none</code> &mdash; same window or tab</label></p>';
+        $html .= '<p><label for="link_target_blank" class="selectit"><input id="link_target_blank" type="radio" name="link-target" value="_blank" '.( !empty($value == '_blank') ? 'checked="checked"' : '' ).' /><code>_blank</code> &mdash; new window or tab</label></p><p><label for="link_target_top" class="selectit"><input id="link_target_top" type="radio" name="link-target" value="_top" '.( !empty($value == '_top') ? 'checked="checked"' : '' ).' />
+<code>_top</code> &mdash; current window or tab, with no frames</label></p><p><label for="link_target_none" class="selectit"><input id="link_target_none" type="radio" name="link-target" value="_none" '.( !empty($value == '_none') ? 'checked="checked"' : '' ).' /><code>_none</code> &mdash; same window or tab</label></p>';
 		$html .= '<p>Choose the target frame for your link.</p>';
 		$html .= '</p>';
 	    echo $html;
+
 	}
 
 	/* Save the custom meta box fields to the postmeta table */
@@ -439,32 +316,46 @@ class My_Links {
 		}
 
 		// Checks for input and sanitizes/saves if needed
-		if ( isset( $_POST[ 'link-url' ] ) ) {
+		if ( isset($_POST['link-url']) && !empty($_POST['link-url']) ) {
 			update_post_meta( $post_id, '_link-url', sanitize_text_field( $_POST[ 'link-url' ] ) );
 		}
                            
-        if ( isset( $_POST[ 'link-description' ] ) ) {
+        if ( isset($_POST['link-description']) && !empty($_POST['link-description']) ) {
 			update_post_meta( $post_id, '_link-description', sanitize_text_field( $_POST[ 'link-description' ] ) );
 		}
         
-        if ( isset( $_POST[ 'link-target' ] ) ) {
+        if ( isset($_POST['link-target']) && !empty($_POST['link-target']) ) {
 			update_post_meta( $post_id, '_link-target', sanitize_text_field( $_POST[ 'link-target' ] ) );
 		}
 	}
     
+    // Exclude Post Type from Search
+    function my_links_search_filter($query) {
+        if ( !$query->is_admin && $query->is_main_query() ) {
+            if ( $query->is_search ) {
+                $query->set('post_type', array('page', 'post') );
+            }
+        }
+        return $query;
+    }
+    
     /* My Links Shortcode */
     function press_links_shortcode( $atts ) { 
+        // Variables
+        $output = '';
+        
+        // Get Shortcode Attributes
         extract( shortcode_atts( array(  
-            'limit' => '10',  
+            'limit' => '5',  
             'orderby' => 'date',
             'category' => ''
         ), $atts ) );  
-        if ($category) {
-            echo "yes";
-            echo $category;
+        
+        // Build the Loop Based on the Defined Attributes
+        if ($category !== '' && $category !== 'all') {
             $loop = new WP_Query( array( 
                 'post_type' => 'my_links', 
-                'posts_per_page' => $limit, 
+                'posts_per_page' => $limit,
                 'orderby' => $orderby, 
                 'tax_query' => array( 
                     array(
@@ -475,19 +366,31 @@ class My_Links {
                 ) 
             ) ); 
         } else {
+            $output .= '<h4>All Categories</h4>';
             $loop = new WP_Query( array ( 'post_type' => 'my_links', 'posts_per_page' => $limit, 'orderby' => $orderby ) );
         }
+        
         // Looping through the posts and building the HTML structure.  
-        $output = '';
-        if($loop){  
+        if ($loop) {  
+            $output .= '<ul class="press-link clearfix">';
             while ($loop->have_posts()){  
                  $loop->the_post();  
-                 $output .= '<div class="press-link clearfix"><strong>'.sprintf(__('<time class="updated" datetime="%1$s" pubdate>%2$s</time>', 'zonediet'), get_the_time('Y-m-j'), get_the_time(get_option('date_format'))).'</strong> '.get_the_title().'</div>';
-            }  
+                 $output .= '<li><strong>'.sprintf(__('<time class="updated" datetime="%1$s" pubdate>%2$s</time>', 'zonediet'), get_the_time('Y-m-j'), get_the_time(get_option('date_format'))).'</strong> '.get_the_title().'</li>';
+            }
             wp_reset_postdata();
-        }  else {  
+            $output .= '</ul>';
+            
+            // Read More Link
+            if ($category !== '' && $category !== 'all') {
+                $link = get_term_link($category, 'my_links_category');
+                $term = get_term_by('slug', $category, 'my_links_category');
+                $output .= '<p><a class="read-more" href="'.$link.'" title="'.$term->name.' Archive">Read More</a></p>';
+            }
+            
+        } else {  
             $output = 'Sorry, no links&hellip;';
         }
+        
         // Now we are returning the HTML code back to the place from where the shortcode was called.          
         return $output;
     } 
