@@ -63,10 +63,11 @@ class My_Links {
         add_filter( 'rewrite_rules_array', array( $this, 'my_links_add_rewrite_rules' ) );
         add_filter( 'post_type_link', array( $this, 'my_links_filter_post_type_link' ), 10, 2 );
         add_shortcode( 'press_links', array( $this, 'press_links_shortcode' ) );
+        add_filter( 'template_include',  array( $this, 'include_template_function' ), 1 );
         add_filter( 'pre_get_posts', array( $this, 'my_links_search_filter' ) );
 
 		if ( is_admin() ) {
-
+            
 			add_filter( 'post_updated_messages', array( $this, 'update_messages' ) );
 			add_action( 'contextual_help', array( $this, 'update_contextual_help' ), 10, 3 );
 			add_action( 'add_meta_boxes', array( $this, 'add_custom_meta_box' ) );
@@ -74,6 +75,9 @@ class My_Links {
             add_action( 'add_meta_boxes', array( $this, 'my_link_remove_metaboxes' ), 999 );
             add_action( 'admin_menu', array( $this, 'add_custom_meta_box' ) );
             add_action( 'save_post', array( $this, 'my_links_category_set_default_object_terms' ), 100, 2 );
+            
+            add_action( 'admin_enqueue_scripts', array( $this, 'meta_box_admin_style' ) );
+            add_action( 'admin_enqueue_scripts', array( $this, 'meta_box_admin_script' ) );
 
 		}
         
@@ -225,8 +229,26 @@ class My_Links {
         remove_meta_box( 'wpseo_meta', 'my_links', 'normal' );
     }
     
+    /* Register and enqueue admin stylesheet */
+	public function meta_box_admin_style() {
+	    wp_enqueue_style(self::slug.'-admin', plugins_url('css/admin.css', __FILE__));
+	}
+    
+    public function meta_box_admin_script() {
+        wp_enqueue_script(self::slug.'-admin', plugins_url('js/admin.js', __FILE__), array('jquery'), '', TRUE);
+        wp_enqueue_script('jquery-ui-datepicker', array('jquery'), '', TRUE);
+    }
+    
     /* Add a custom meta box for inputs in the new content type*/
 	public function add_custom_meta_box( $post_type ) {
+        add_meta_box(
+	        'my_links_date',
+	        __( 'Article Date', self::slug ),
+	        array( $this, 'my_links_date_meta_box_content' ),
+	        self::slug,
+	        'side',
+	        'default'
+	    );
 	    add_meta_box(
 	        'my_links_url',
 	        __( 'Web Address', self::slug ),
@@ -251,6 +273,20 @@ class My_Links {
 	        'normal',
 	        'default'
 	    );
+	}
+    
+    public function my_links_date_meta_box_content( $post ) {
+		// Add an nonce field so we can check for it later.
+		wp_nonce_field( plugin_basename( __FILE__ ), 'my_links_date_meta_box_content_nonce' );
+
+		// Use get_post_meta to retrieve an existing value from the database.
+		$value = get_post_meta( $post->ID, '_link-date', true );
+
+		$html = '<p>';
+		$html .= '<input class="datepicker" type="text" name="link-date" id="link-date" style="width:100%" value="'.( !empty($value) ? $value : "" ).'" />';
+		$html .= '<p>Specify the publish date of the article.</p>';
+		$html .= '</p>';
+	    echo $html;
 	}
     
 	public function my_links_url_meta_box_content( $post ) {
@@ -306,6 +342,7 @@ class My_Links {
 		// Checks save status
 		$is_autosave = wp_is_post_autosave( $post_id );
 		$is_revision = wp_is_post_revision( $post_id );
+        $is_date_valid_nonce = ( isset( $_POST[ 'my_links_date_meta_box_content_nonce' ] ) && wp_verify_nonce( $_POST[ 'my_links_date_meta_box_content_nonce' ], basename( __FILE__ ) ) ) ? 'true' : 'false';
 		$is_url_valid_nonce = ( isset( $_POST[ 'my_links_url_meta_box_content_nonce' ] ) && wp_verify_nonce( $_POST[ 'my_links_url_meta_box_content_nonce' ], basename( __FILE__ ) ) ) ? 'true' : 'false';
         $is_description_valid_nonce = ( isset( $_POST[ 'my_links_description_meta_box_content_nonce' ] ) && wp_verify_nonce( $_POST[ 'my_links_description_meta_box_content_nonce' ], basename( __FILE__ ) ) ) ? 'true' : 'false';
         $is_target_valid_nonce = ( isset( $_POST[ 'my_links_target_meta_box_content_nonce' ] ) && wp_verify_nonce( $_POST[ 'my_links_target_meta_box_content_nonce' ], basename( __FILE__ ) ) ) ? 'true' : 'false';
@@ -316,6 +353,10 @@ class My_Links {
 		}
 
 		// Checks for input and sanitizes/saves if needed
+        if ( isset($_POST['link-date']) && !empty($_POST['link-date']) ) {
+			update_post_meta( $post_id, '_link-date', sanitize_text_field( $_POST[ 'link-date' ] ) );
+		}
+        
 		if ( isset($_POST['link-url']) && !empty($_POST['link-url']) ) {
 			update_post_meta( $post_id, '_link-url', sanitize_text_field( $_POST[ 'link-url' ] ) );
 		}
@@ -346,10 +387,22 @@ class My_Links {
         
         // Get Shortcode Attributes
         extract( shortcode_atts( array(  
-            'limit' => '5',  
-            'orderby' => 'date',
+            'limit' => '2',  
+            'orderby' => 'meta_value_num',
+            'meta_key' => '_link-date',
             'category' => ''
-        ), $atts ) );  
+        ), $atts ) ); 
+        
+        if (get_query_var('paged')) { 
+            $paged = get_query_var('paged'); 
+        } elseif (get_query_var('page')) { 
+            $paged = get_query_var('page'); 
+        } else { 
+            $paged = 1; 
+        }
+        
+        echo $paged;
+        echo get_query_var('paged');
         
         // Build the Loop Based on the Defined Attributes
         if ($category !== '' && $category !== 'all') {
@@ -357,6 +410,7 @@ class My_Links {
                 'post_type' => 'my_links', 
                 'posts_per_page' => $limit,
                 'orderby' => $orderby, 
+                'paged' => $paged,
                 'tax_query' => array( 
                     array(
                         'taxonomy' => 'my_links_category', 
@@ -367,25 +421,39 @@ class My_Links {
             ) ); 
         } else {
             $output .= '<h4>All Categories</h4>';
-            $loop = new WP_Query( array ( 'post_type' => 'my_links', 'posts_per_page' => $limit, 'orderby' => $orderby ) );
+            $loop = new WP_Query( array ( 'post_type' => 'my_links', 'posts_per_page' => $limit, 'orderby' => $orderby, 'paged' => $paged ) );
         }
         
         // Looping through the posts and building the HTML structure.  
         if ($loop) {  
             $output .= '<ul class="press-link clearfix">';
+            $i = 0;
             while ($loop->have_posts()){  
-                 $loop->the_post();  
-                 $output .= '<li><strong>'.sprintf(__('<time class="updated" datetime="%1$s" pubdate>%2$s</time>', 'zonediet'), get_the_time('Y-m-j'), get_the_time(get_option('date_format'))).'</strong> '.get_the_title().'</li>';
+                 $loop->the_post(); 
+                 //echo get_post_meta($loop->post->ID,, '_link-date', true);
+                 $output .= '<li><strong>'.sprintf(__('<time class="updated" datetime="%1$s" pubdate>%2$s</time>', 'zonediet'), get_post_meta($loop->post->ID, '_link-date', true), get_post_meta($loop->post->ID, '_link-date', true)).'</strong> '.get_the_title().'</li>';
+                $i++; 
             }
-            wp_reset_postdata();
-            $output .= '</ul>';
+            /*if (function_exists('zonediet_page_navi')) {
+                echo "yes";
+                zonediet_page_navi();
+            }*/ ?>
+            
+            <?php
             
             // Read More Link
             if ($category !== '' && $category !== 'all') {
                 $link = get_term_link($category, 'my_links_category');
                 $term = get_term_by('slug', $category, 'my_links_category');
-                $output .= '<p><a class="read-more" href="'.$link.'" title="'.$term->name.' Archive">Read More</a></p>';
+                $output .= '<li><a class="read-more" href="'.$link.'" title="'.$term->name.' Archive">Read More</a></li>';
             }
+            
+            $output .= '</ul>';
+            
+            $output .= '<nav class="wp-prev-next"><ul class="clearfix"><li class="prev-link">'.next_posts_link(__("&laquo; Older Entries", "zonediet")).'</li><li class="next-link">'.previous_posts_link(__("Newer Entries &raquo;", "zonediet")).'</li></ul></nav>';
+            $output .= zonediet_page_navi();
+            
+            wp_reset_postdata();
             
         } else {  
             $output = 'Sorry, no links&hellip;';
@@ -394,6 +462,21 @@ class My_Links {
         // Now we are returning the HTML code back to the place from where the shortcode was called.          
         return $output;
     } 
+    
+    /* Output */
+	function include_template_function( $template_path ) {
+	    if ( get_post_type() == 'my_links' ) {
+	        if ( is_tax('my_links_category') ) {
+	            // checks if the file exists in the theme first, otherwise serve the file from the plugin
+	            if ( $theme_file = locate_template( array ( 'taxonomy-my_links_category.php' ) ) ) {
+	                $template_path = $theme_file;
+	            } else {
+	                $template_path = plugin_dir_path( __FILE__ ) . 'templates/taxonomy-my_links_category.php';
+	            }
+	        }
+	    }
+	    return $template_path;
+	}
 
 }
 add_action('plugins_loaded', array( 'My_Links', 'get_instance' ) );
