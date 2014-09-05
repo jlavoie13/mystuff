@@ -387,22 +387,11 @@ class My_Links {
         
         // Get Shortcode Attributes
         extract( shortcode_atts( array(  
-            'limit' => '2',  
+            'limit' => '10',  
             'orderby' => 'meta_value_num',
             'meta_key' => '_link-date',
             'category' => ''
         ), $atts ) ); 
-        
-        if (get_query_var('paged')) { 
-            $paged = get_query_var('paged'); 
-        } elseif (get_query_var('page')) { 
-            $paged = get_query_var('page'); 
-        } else { 
-            $paged = 1; 
-        }
-        
-        echo $paged;
-        echo get_query_var('paged');
         
         // Build the Loop Based on the Defined Attributes
         if ($category !== '' && $category !== 'all') {
@@ -410,7 +399,6 @@ class My_Links {
                 'post_type' => 'my_links', 
                 'posts_per_page' => $limit,
                 'orderby' => $orderby, 
-                'paged' => $paged,
                 'tax_query' => array( 
                     array(
                         'taxonomy' => 'my_links_category', 
@@ -421,25 +409,33 @@ class My_Links {
             ) ); 
         } else {
             $output .= '<h4>All Categories</h4>';
-            $loop = new WP_Query( array ( 'post_type' => 'my_links', 'posts_per_page' => $limit, 'orderby' => $orderby, 'paged' => $paged ) );
+            $loop = new WP_Query( array ( 'post_type' => 'my_links', 'posts_per_page' => $limit, 'orderby' => $orderby ) );
         }
         
         // Looping through the posts and building the HTML structure.  
         if ($loop) {  
-            $output .= '<ul class="press-link clearfix">';
-            $i = 0;
-            while ($loop->have_posts()){  
-                 $loop->the_post(); 
-                 //echo get_post_meta($loop->post->ID,, '_link-date', true);
-                 $output .= '<li><strong>'.sprintf(__('<time class="updated" datetime="%1$s" pubdate>%2$s</time>', 'zonediet'), get_post_meta($loop->post->ID, '_link-date', true), get_post_meta($loop->post->ID, '_link-date', true)).'</strong> '.get_the_title().'</li>';
-                $i++; 
-            }
-            /*if (function_exists('zonediet_page_navi')) {
-                echo "yes";
-                zonediet_page_navi();
-            }*/ ?>
             
-            <?php
+            $output .= '<ul class="press-link clearfix">';
+            
+            while ($loop->have_posts()) {  
+                $loop->the_post(); 
+                
+                // Post Meta
+                $date = get_post_meta($loop->post->ID, '_link-date', true);
+                $url = get_post_meta($loop->post->ID, "_link-url", true);
+                $description = get_post_meta($loop->post->ID, "_link-description", true);
+                $target = get_post_meta($loop->post->ID, "_link-target", true);
+                
+                $output .= '<li>';
+                if ($date) {
+                     $output .= ''.sprintf(__('<time class="updated" datetime="%1$s" pubdate>%2$s</time>', 'zonediet'), $date, $date).' ';
+                }
+                $output .= '<a href="'.$url.'" title="'.get_the_title().'" target="'.$target.'">'.get_the_title().'</a>';    
+                if ($description) {
+                    $output .= '<div class="link-description">'.$description.'</div>';
+                }
+                $output .= '</li>';
+            }
             
             // Read More Link
             if ($category !== '' && $category !== 'all') {
@@ -449,9 +445,6 @@ class My_Links {
             }
             
             $output .= '</ul>';
-            
-            $output .= '<nav class="wp-prev-next"><ul class="clearfix"><li class="prev-link">'.next_posts_link(__("&laquo; Older Entries", "zonediet")).'</li><li class="next-link">'.previous_posts_link(__("Newer Entries &raquo;", "zonediet")).'</li></ul></nav>';
-            $output .= zonediet_page_navi();
             
             wp_reset_postdata();
             
