@@ -1,4 +1,4 @@
-#minor-publishing-actions, #misc-publishing-actions #visibility, #misc-publishing-actions .curtime {
+.post-type-my_links #minor-publishing-actions, .post-type-my_links #misc-publishing-actions #visibility, .post-type-my_links #misc-publishing-actions .curtime {
     display: none !important;
 }
 

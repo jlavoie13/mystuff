@@ -13,26 +13,11 @@ get_header(); ?>
 
 				<h2 class="archive-title">
 					<?php
-						if ( is_category() ) :
-							single_cat_title();
-
-						elseif ( is_tax() ) :
-							single_term_title();
-
-						elseif ( is_author() ) :
-							printf( __( 'Author Archive: %s', 'zonediet' ), '<span class="vcard">' . get_the_author() . '</span>' );
-
-						elseif ( is_day() ) :
-							printf( __( 'Daily Archives: %s', 'zonediet' ), '<span>' . get_the_date() . '</span>' );
-
-						elseif ( is_month() ) :
-							printf( __( 'Monthly Archives: %s', 'zonediet' ), '<span>' . get_the_date( _x( 'F Y', 'monthly archives date format', 'zonediet' ) ) . '</span>' );
-
-						elseif ( is_year() ) :
-							printf( __( 'Yearly Archives: %s', 'zonediet' ), '<span>' . get_the_date( _x( 'Y', 'yearly archives date format', 'zonediet' ) ) . '</span>' );
+						if ( is_tax() ) :
+							single_term_title('Press Room: ');
 
 						else :
-							_e( 'Archives', 'zonediet' );
+							_e( 'Archives', 'scaffolding' );
 
 						endif;
 					?>
@@ -46,26 +31,30 @@ get_header(); ?>
 				?>
 			</header><!-- .page-header -->
 
-			<?php while (have_posts()) : the_post(); ?>
+            <ul class="press-link clearfix">
 
-					<article id="post-<?php the_ID(); ?>" <?php post_class('post-index clearfix'); ?> role="article">
+			<?php while (have_posts()) : the_post();
 
-						<header class="entry-header">
+				$date = get_post_meta($post->ID, '_link-date', true);
+                $url = get_post_meta($post->ID, "_link-url", true);
+                $description = get_post_meta($post->ID, "_link-description", true);
+                $target = get_post_meta($post->ID, "_link-target", true); ?>
 
-							<h3 class="entry-title"><?php the_title(); ?></h3>
+				<li>
+                <?php if ($date) {
+                    echo sprintf(__('<time class="updated" datetime="%1$s" pubdate>%2$s</time>', 'scaffolding'), $date, $date);
+                } ?>
+                    <a href="<?php echo $url; ?>" title="<?php the_title(); ?>" target="<?php echo $target; ?>"><?php the_title(); ?></a>    
+                <?php if ($description) { ?>
+                    <div class="link-description"><?php echo $description; ?></div>
+                <?php } ?>
+                </li>    
 
-							<?php
-							/* Hidden by default
-							<?php printf(__('Posted <time class="updated" datetime="%1$s" pubdate>%2$s</time> by <span class="author">%3$s</span> <span class="amp">&</span> filed under %4$s.', 'scaffolding'), get_the_time('Y-m-j'), get_the_time(get_option('date_format')), scaffolding_get_the_author_posts_link(), get_the_category_list(', ')); ?></p>
-							*/ ?>
+            <?php endwhile; ?>
+                
+            </ul>
 
-						</header> <!-- end article header -->
-
-					</article> <!-- end article -->
-
-				<?php endwhile; ?>
-
-				<?php get_template_part('templates/template','pager'); //wordpress template pager/pagination ?>
+            <?php get_template_part('templates/template','pager'); //wordpress template pager/pagination ?>
 
 			<?php else : ?>
 
